@@ -2,7 +2,7 @@
   Rifle - antenna rotator interface for YAESU G-1000DXC series rotator
 
   -----------------------------------------------------------------------------
-  2012/7/11 - 2013/10/28 - 20141/24
+  2012/7/11 - 2013/10/28 - 20141/24 - 2014/11/27 
 
 Basically all work is build around the timer wich is 4 times the baudrate and 
 implements a software uart. The target is ATTINY 26.
@@ -43,6 +43,8 @@ v - Version string
 
 Additional feature antena death protection. Stop rotator movement after 60 seconds.
 
+Some modifications for ATTINY 261A - change of register names and watchdog problems
+
  *****************************************************************************/
 // internal clock 
 #define F_CPU 8000000
@@ -57,7 +59,7 @@ Additional feature antena death protection. Stop rotator movement after 60 secon
 #include <avr/pgmspace.h>
 #include <avr/wdt.h>
 
-const char version[] PROGMEM = "Rifle V4.5\n";
+const char version[] PROGMEM = "Rifle V4.6\n";
 
 #define	UARTTX      PA7
 #define UARTRX      PA6
@@ -128,12 +130,12 @@ static unsigned char buffer[8]; // circular buffer for receiver
 #define ABSDIFF(a, b) ((a) < (b)? ((b) - (a)): ((a) - (b))) 
 
 
-ISR( TIMER0_OVF0_vect) {
+ISR( TIMER0_OVF_vect) {
   // the interrupt signal
 
   // we arrive here four times per baud rate
   // preset the timer0
-  TCNT0 = TIMER0PRESET;				// preset for timer
+  TCNT0L = TIMER0PRESET;				// preset for timer
 
   // we first send the output signal, if there's anything to send,
   // since it needs to be somewhere close to accurate...
@@ -365,7 +367,7 @@ ISR( TIMER0_OVF0_vect) {
     fiftieths++;
 
     // ADC stuff
-    if( (ADCSR & (1<<ADSC)) == 0) {
+    if( (ADCSRA & (1<<ADSC)) == 0) {
       if( ADMUX == 0) {
         // read bearing a
         bearing_a = ADCW;
@@ -384,7 +386,7 @@ ISR( TIMER0_OVF0_vect) {
         bearing_b >>= 1;
         ADMUX = ADC_MUX_BEAR_A;
       }
-      ADCSR |= (1<<ADSC);        // start AD conversion
+      ADCSRA |= (1<<ADSC);        // start AD conversion
     }
 
     // movement control - do not overshoot - only check if moving
@@ -483,8 +485,8 @@ void init( void) {
   PORTA |= 1<<UARTTX | 1<<LED;	                            	        // write 1 to output
   PORTB |= 1<<SPEEDCTRL_A | 1<<SPEEDCTRL_B;               		        // write 1 to output
 
-  TCCR0 = 0x02;               // set prescaler for timer0 to 8
-  TCNT0 = TIMER0PRESET;				// preset for timer
+  TCCR0B = 0x02;               // set prescaler for timer0 to 8
+  TCNT0L = TIMER0PRESET;				// preset for timer
 
   TIMSK = (1<<TOIE0); 		    // allow interrupts on timer0 overflow
 
@@ -500,13 +502,14 @@ void init( void) {
   rotator_status = 0;     // the rotator is not moving
 
   // Configure ADC
-  ADCSR = 0b00000110;         // Prescaler = 64 >> clk=125kHz,  Single conversion
+  ADCSRA = 0b00000110;         // Prescaler = 64 >> clk=125kHz,  Single conversion
 
-  ADMUX = ADC_MUX_BEAR_A;     // use Vcc as referenc and select input
+  ADMUX = ADC_MUX_BEAR_A;     
+  ADCSRB = 0;                  // use Vcc as referenc and select input
 
-  ADCSR |= (1<<ADEN);         // enable the ADC
+  ADCSRA |= (1<<ADEN);         // enable the ADC
 
-  ADCSR |= (1<<ADSC);         // start AD conversion
+  ADCSRA |= (1<<ADSC);         // start AD conversion
 
   seconds = 0;                // just count seconds
   reset = 1;                  // show recovering from reset

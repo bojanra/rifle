@@ -27,22 +27,35 @@
 ##### tools.
 # Install following tools
 # apt-get install gcc-avr avr-libc avrdude libusb-dev
+#
+# take care of the correct udev settings in
+# /etc/udev/rules.d/80-usbprog.rules
+# ATTR{idVendor}=="1781", ATTR{idProduct}=="0c9f", GROUP="plugdev", MODE="0660" # adafruit usbtiny
+# ATTR{idVendor}=="03eb", ATTR{idProduct}=="c8b4", GROUP="plugdev", MODE="0660" # Alibaba programer
+# edit /etc/avrdude
+#
+# programmer
+#  id    = "usbasp-clone";
+#  desc  = "Any usbasp clone with correct VID/PID";
+#  type  = "usbasp";
+#  connection_type = usb;
+#  usbvid     = 0x03EB; # standard
+#  usbpid     = 0xC8B4; # Alibaba
+#  #usbvendor  = "";
+#  #usbproduct = "";
+#;
+#
+#
 # read fuse bits
 # low
 # Now use 
-# avrdude -c usbtiny -p attiny26 -v -U hfuse:r:-:h -U lfuse:r:-:h
-# avrdude -c usbtiny -p attiny26 -v -U hfuse:w:0x14:m
-# avrdude -c usbtiny -p attiny26 -v -U lfuse:w:0xff:m
+# avrdude -c usbtiny -p attiny261 -v -U hfuse:r:-:h -U lfuse:r:-:h -U efuse:r:-:h
+# avrdude -c usbtiny -p attiny261 -v -U lfuse:w:0xff:m -U hfuse:w:0xdc:m -U efuse:w:0xff:m
+# avrdude -c usbtiny -p attiny261 -v -U hfuse:w:0x14:m
+# avrdude -c usbtiny -p attiny261 -v -U lfuse:w:0xff:m
 #
 # avrdude -p m128 -u -U flash:w:diag.hex -U eeprom:w:eeprom.hex -U efuse:w:0xff:m -U hfuse:w:0x89:m -U lfuse:w:0x2e:m
 #
-#
-# This was the old way.
-# avrdude -c usbtiny -p attiny26 -P /dev/ttyUSB0 -v -U hfuse:r:-:h -U lfuse:r:-:h
-# avrdude -c usbtiny -p attiny26 -P /dev/ttyUSB0 -v -U hfuse:w:0x14:m
-# avrdude -c usbtiny -p attiny26 -P /dev/ttyUSB0 -v -U lfuse:w:0xff:m
-#
-# avrdude -p m128 -u -U flash:w:diag.hex -U eeprom:w:eeprom.hex -U efuse:w:0xff:m -U hfuse:w:0x89:m -U lfuse:w:0x2e:m
 #
 #####
 ##### It supports C, C++ and Assembly source files.
@@ -84,7 +97,7 @@
 # Name of target controller
 # (e.g. 'at90s8515', see the available avr-gcc mmcu
 # options for possible values)
-MCU=attiny26
+MCU=attiny261
 
 # id to use with programmer
 # default: PROGRAMMER_MCU=$(MCU)
@@ -92,7 +105,7 @@ MCU=attiny26
 # accept the same MCU name as avr-gcc (for example
 # for ATmega8s, avr-gcc expects 'atmega8' and
 # avrdude requires 'm8')
-PROGRAMMER_MCU=attiny26
+PROGRAMMER_MCU=attiny261
 
 # Name of our project
 # (use a single word, e.g. 'myproject')
@@ -132,8 +145,8 @@ OPTLEVEL=s
 # one of the valid "-c PROGRAMMER-ID" values
 # described in the avrdude info page.
 #
-#AVRDUDE_PROGRAMMERID=usbtiny
-AVRDUDE_PROGRAMMERID=usbasp
+AVRDUDE_PROGRAMMERID=usbtiny
+#AVRDUDE_PROGRAMMERID=usbasp-clone
 #AVRDUDE_PROGRAMMERID=buspirate
 
 # port--serial or parallel port to which your
@@ -242,10 +255,10 @@ all: $(TRG)
 fuses:
 	$(AVRDUDE) -c $(AVRDUDE_PROGRAMMERID)  \
 	 -p $(PROGRAMMER_MCU) -v  \
-     -U hfuse:w:0x14:m -U lfuse:w:0xff:m
+     -U hfuse:w:0xdc:m -U lfuse:w:0xff:m -U efuse:w:0xff:m
 	$(AVRDUDE) -c $(AVRDUDE_PROGRAMMERID)  \
 	 -p $(PROGRAMMER_MCU) -v  \
-   -U hfuse:r:-:h -U lfuse:r:-:h
+   -U hfuse:r:-:h -U lfuse:r:-:h -U efuse:r:-:h
 
 
 disasm: $(DUMPTRG) stats
