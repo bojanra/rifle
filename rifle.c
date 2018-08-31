@@ -21,6 +21,8 @@ The watchdog is active via the main loop.
 
 Accept these commands:
 (command termination is 0x0d)
+B - get only elevation +0eee
+C - get only azimut +0aaa
 C2 - get readings in form +0aaa+0eee
 Waaa eee - set destination and start  W200 060
 S - stop motion & tuning mode & debug output (space)
@@ -43,7 +45,7 @@ v - Version string
 #include <avr/pgmspace.h>
 #include <avr/wdt.h>
 
-const char version[] PROGMEM = "Rifle V5.2\n";
+const char version[] PROGMEM = "Rifle V5.2 extended\n";
 
 #define	UARTTX      PA7
 #define UARTRX      PA6
@@ -81,6 +83,8 @@ static volatile uint16_t  differ;
 #define job_stop_motion   4
 #define job_get_reading   8
 #define job_tuning        16
+#define job_get_azimut    32
+#define job_get_elevation 64
 
 // status codes
 #define moving_a    1
@@ -315,6 +319,12 @@ ISR( TIMER0_OVF0_vect) {
             else if( next_write == 2 && buffer[0] == 'C' && buffer[1] == '2') {
               job |= job_get_reading;
             }
+            else if( next_write == 1 && buffer[0] == 'C') {
+              job |= job_get_azimut;
+            }
+            else if( next_write == 1 && buffer[0] == 'B') {
+              job |= job_get_elevation;
+            }
             next_write = 0;
           }
           else {
@@ -513,6 +523,24 @@ int main(void) {
       put_char( '\n');
       if( job & job_get_reading) {
         job &= ~job_get_reading;
+      }
+    }
+    if( job & job_get_azimut) {
+      put_char( '+');
+      put_char( '0');
+      put_int( bearing_a);
+      put_char( '\n');
+      if( job & job_get_azimut) {
+        job &= ~job_get_azimut;
+      }
+    }
+    if( job & job_get_elevation) {
+      put_char( '+');
+      put_char( '0');
+      put_int( bearing_b);
+      put_char( '\n');
+      if( job & job_get_elevation) {
+        job &= ~job_get_elevation;
       }
     }
     wdt_reset();
