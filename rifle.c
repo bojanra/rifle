@@ -4,15 +4,20 @@
   -----------------------------------------------------------------------------
   2012/7/11 - 2013/10/28 - 20141/24 - 2014/11/27 
 
-Basically all work is build around the timer wich is 4 times the baudrate and 
+Basically all work is build around the timer wich is 4 times the baudrate and
 implements a software uart. The target is ATTINY 26.
+
+The baudrate is 2400.
+
+When using ATtiny26 16PU we need to program fuse bits in avrdude
+avrdude -c usbasp -p attiny26 -e -U flash:w:rifle.hex -B 16 -U lfuse:w:0xed:m -U hfuse:w:0xf7:m
 
 In normal mode the Led is blinking Duty Cyle 10%.
 When incrementing speed for rotator A the DC is 10-10%;
 
-We can control 2 yaesu rotators A and B. 
+We can control 2 yaesu rotators A and B.
 
-When more than (60 seconds) DEADTIME after each start of movement the target is not reached 
+When more than (60 seconds) DEADTIME after each start of movement the target is not reached
 we stop the rotator movement.
 
 The watchdog is active via the main loop.
@@ -46,9 +51,9 @@ Additional feature antena death protection. Stop rotator movement after 60 secon
 Some modifications for ATTINY 261A - change of register names and watchdog problems
 
  *****************************************************************************/
-// internal clock 
+// internal clock
 #define F_CPU 8000000
-#define TIMER0PRESET (255-98)   //  255-t_bit  ,  t_bit = 1/2400/4*F_CPU/prescaler 
+#define TIMER0PRESET (255-98)   //  255-t_bit  ,  t_bit = 1/2400/4*F_CPU/prescaler
 #define DEADTIME 60             // after DEADTIME seconds since start of movement the rotator is stopped
 
 #define DEBUG 1
@@ -67,7 +72,7 @@ const char version[] PROGMEM = "Rifle V4.6\n";
 #define MOSL        PA1   // input for received fieldstrength
 
 #define LEFT_A      PB0   // rotator A
-#define RIGHT_A     PB1    
+#define RIGHT_A     PB1
 #define SPEEDCTRL_A PB3
 #define SPEED_A     OCR1B
 #define BEAR_A      PA0   // input for rotator A bearing
@@ -127,7 +132,7 @@ static unsigned char buffer[8]; // circular buffer for receiver
 #define rxbusy 1				// set if a byte is being received
 #define rxframe 2				// set if the stop byte isn't a one
 
-#define ABSDIFF(a, b) ((a) < (b)? ((b) - (a)): ((a) - (b))) 
+#define ABSDIFF(a, b) ((a) < (b)? ((b) - (a)): ((a) - (b)))
 
 
 ISR( TIMER0_OVF_vect) {
@@ -240,7 +245,7 @@ ISR( TIMER0_OVF_vect) {
           // and set the higest bit
           // if the data bit is a one, set we add the bit value to the rxd value
           if ((PINA & (1<<UARTRX)) != 0) {
-            uart_rxd |= (1<<7); 
+            uart_rxd |= (1<<7);
           }
           uart_rxbit ++;
         }
@@ -392,15 +397,15 @@ ISR( TIMER0_OVF_vect) {
     // movement control - do not overshoot - only check if moving
     if( (fiftieths % 10 == 0) && rotator_status) {
       // we have arrived at the target bearing
-      if( target_a == bearing_a || 
-          ((PORTB & (1<<LEFT_A)) && target_a > bearing_a) || 
+      if( target_a == bearing_a ||
+          ((PORTB & (1<<LEFT_A)) && target_a > bearing_a) ||
           ((PORTB & (1<<RIGHT_A)) && target_a < bearing_a)) {
         rotator_status &= ~moving_a;
         PORTB &= ~(1<<RIGHT_A);
         PORTB &= ~(1<<LEFT_A);
       }
-      if( target_b == bearing_b || 
-          ((PORTA & (1<<LEFT_B)) && target_b > bearing_b) || 
+      if( target_b == bearing_b ||
+          ((PORTA & (1<<LEFT_B)) && target_b > bearing_b) ||
           ((PORTA & (1<<RIGHT_B)) && target_b < bearing_b)) {
         rotator_status &= ~moving_b;
         PORTA &= ~(1<<RIGHT_B);
@@ -491,8 +496,8 @@ void init( void) {
   TIMSK = (1<<TOIE0); 		    // allow interrupts on timer0 overflow
 
 //  TCCR1A = 0x21;              // enable PWM mode for OC1B - PB3, clear PB3 on compare match. Set when TCNT=0x01
-//  TCCR1B = 0x01;              // prescaler = 1 
-//  OCR1C = 0x0a;               // the PWM counter is counting from 0 - 
+//  TCCR1B = 0x01;              // prescaler = 1
+//  OCR1C = 0x0a;               // the PWM counter is counting from 0 -
 //  SPEED_A = 0;                // default is lowest rotating speed
 
   next_write = 0;       // set up the buffer pointers
@@ -534,7 +539,7 @@ int main(void) {
     if( job & job_timeout) {
       job &= ~job_timeout;
       put_char( 't');
-      put_char( '\n');      
+      put_char( '\n');
     }
     if( job & job_getversion) {
       job &= ~job_getversion;
