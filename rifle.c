@@ -19,13 +19,20 @@ the movement is stopped.
 
 The watchdog is active via the main loop.
 
-Accept these commands:
+Accept these commands coming from YAESU GS232:
 (command termination is 0x0d)
 B - get only elevation +0eee
 C - get only azimut +0aaa
 C2 - get readings in form +0aaa+0eee
-Waaa eee - set destination and start  W200 060
 S - stop motion & tuning mode & debug output (space)
+Maaa - set destination azimut W180
+Waaa eee - set destination and start  W200 060
+L - start rotating left
+R - start rotating right
+U - start moving up
+D - start moving down
+A - stop azimut rotation
+E - stop elevation moving
 
 (no command termination - direct reading)
 t - tuning mode on - continously send readings
@@ -257,11 +264,9 @@ ISR( TIMER0_OVF0_vect) {
             next_write = 0;
           }
           else if( uart_rxd == 13) {
-            // command W
             if( next_write == 8 && buffer[0] == 'W' && buffer[4] == ' ') {
-              uint16_t target;
-              target = 100*(buffer[1] & 0x0f)+10*(buffer[2] & 0x0f)+(buffer[3] & 0x0f);
-              target_a = target;
+              // command W
+              target_a = 100*(buffer[1] & 0x0f)+10*(buffer[2] & 0x0f)+(buffer[3] & 0x0f);
               if( target_a <= 450) {
                 // target is o.k. start moving //
                 if( target_a > bearing_a) {
@@ -283,8 +288,7 @@ ISR( TIMER0_OVF0_vect) {
                 PORTB &= ~(1<<RIGHT_A);
                 PORTB &= ~(1<<LEFT_A);
               }
-              target = 100*(buffer[5] & 0x0f)+10*(buffer[6] & 0x0f)+(buffer[7] & 0x0f);
-              target_b = target;
+              target_b = 100*(buffer[5] & 0x0f)+10*(buffer[6] & 0x0f)+(buffer[7] & 0x0f);
               if( target_b <= 150) {
                 // target is o.k. start moving //
                 if( target_b > bearing_b) {
@@ -307,7 +311,32 @@ ISR( TIMER0_OVF0_vect) {
                 PORTA &= ~(1<<LEFT_B);
               }
             }
-            else if( next_write == 1 && buffer[0] == 'S') {
+            else if( next_write == 4 && buffer[0] == 'M') {
+              // command M
+              target_a = 100*(buffer[1] & 0x0f)+10*(buffer[2] & 0x0f)+(buffer[3] & 0x0f);
+              if( target_a <= 450) {
+                // target is o.k. start moving //
+                if( target_a > bearing_a) {
+                  // right
+                  PORTB &= ~(1<<LEFT_A);
+                  PORTB |= (1<<RIGHT_A);
+                }
+                else if( target_a < bearing_a) {
+                  // left
+                  PORTB &= ~(1<<RIGHT_A);
+                  PORTB |= (1<<LEFT_A);
+                }
+                seconds = 0;
+                rotator_status |= moving_a;
+              }
+              else {
+                // stop moving //
+                rotator_status &= ~moving_a;
+                PORTB &= ~(1<<RIGHT_A);
+                PORTB &= ~(1<<LEFT_A);
+              }
+            }
+          else if( next_write == 1 && buffer[0] == 'S') {
               // command S - stop all
               rotator_status = 0;
               job = 0;
@@ -324,6 +353,36 @@ ISR( TIMER0_OVF0_vect) {
             }
             else if( next_write == 1 && buffer[0] == 'B') {
               job |= job_get_elevation;
+            }
+            else if( next_write == 1 && buffer[0] == 'R') {
+              // right
+              PORTB &= ~(1<<LEFT_A);
+              PORTB |= (1<<RIGHT_A);
+            }
+            else if( next_write == 1 && buffer[0] == 'L') {
+              // left
+              PORTB &= ~(1<<RIGHT_A);
+              PORTB |= (1<<LEFT_A);
+            }
+            else if( next_write == 1 && buffer[0] == 'U') {
+              // up
+              PORTA &= ~(1<<LEFT_A);
+              PORTA |= (1<<RIGHT_A);
+            }
+            else if( next_write == 1 && buffer[0] == 'D') {
+              // down
+              PORTA &= ~(1<<RIGHT_B);
+              PORTA |= (1<<LEFT_B);
+            }
+            else if( next_write == 1 && buffer[0] == 'A') {
+              // stop a
+              PORTB &= ~(1<<LEFT_A);
+              PORTB &= ~(1<<RIGHT_A);
+            }
+            else if( next_write == 1 && buffer[0] == 'E') {
+              // stop e
+              PORTA &= ~(1<<LEFT_B);
+              PORTA &= ~(1<<RIGHT_B);
             }
             next_write = 0;
           }
