@@ -1,42 +1,48 @@
 #########  AVR Project Makefile Template   #########
+######                                        ######
+######    Copyright (C) 2003-2005,Pat Deegan, ######
+######            Psychogenic Inc             ######
+######          All Rights Reserved           ######
+######                                        ######
+###### You are free to use this code as part  ######
+###### of your own applications provided      ######
+###### you keep this copyright notice intact  ######
+###### and acknowledge its authorship with    ######
+###### the words:                             ######
+######                                        ######
+###### "Contains software by Pat Deegan of    ######
+###### Psychogenic Inc (www.psychogenic.com)" ######
+######                                        ######
+###### If you use it as part of a web site    ######
+###### please include a link to our site,     ######
+###### http://electrons.psychogenic.com  or   ######
+###### http://www.psychogenic.com             ######
+######                                        ######
 ####################################################
-#
+
+
+##### This Makefile will make compiling Atmel AVR
+##### micro controller projects simple with Linux
+##### or other Unix workstations and the AVR-GCC
+##### tools.
 # Install following tools
 # apt-get install gcc-avr avr-libc avrdude libusb-dev
+# read fuse bits
+# low
+# Now use 
+# avrdude -c usbtiny -p attiny26 -v -U hfuse:r:-:h -U lfuse:r:-:h
+# avrdude -c usbtiny -p attiny26 -v -U hfuse:w:0x14:m
+# avrdude -c usbtiny -p attiny26 -v -U lfuse:w:0xff:m
 #
-# Take care of the correct udev settings in
-# /etc/udev/rules.d/80-usbprog.rules
-# ATTR{idVendor}=="1781", ATTR{idProduct}=="0c9f", GROUP="plugdev", MODE="0660" # adafruit usbtiny
-# ATTR{idVendor}=="03eb", ATTR{idProduct}=="c8b4", GROUP="plugdev", MODE="0660" # Alibaba programer
-#
-# and the correct entries in
-# /etc/avrdude
-# containing:#
-# programmer
-#  id    = "usbasp-clone";
-#  desc  = "Any usbasp clone with correct VID/PID";
-#  type  = "usbasp";
-#  connection_type = usb;
-#  usbvid     = 0x03EB; # standard
-#  usbpid     = 0xC8B4; # Alibaba
-#  #usbvendor  = "";
-#  #usbproduct = "";
-#;
-#
-# Use programmer:
-#                usbtiny - ladyada
-#                usbasp - china clone
-#
-# Read fuse:
-# avrdude -c usbasp -p attiny261 -v -U hfuse:r:-:h -U lfuse:r:-:h -U efuse:r:-:h
-# Write fuse:
-# avrdude -c usbtiny -p attiny261 -v -U lfuse:w:0xff:m -U hfuse:w:0xdc:m -U efuse:w:0xff:m
-#
-# Program all:
 # avrdude -p m128 -u -U flash:w:diag.hex -U eeprom:w:eeprom.hex -U efuse:w:0xff:m -U hfuse:w:0x89:m -U lfuse:w:0x2e:m
 #
-# ATTENTION
-# usbasp board (cheap china board) needs -B 20.0 option to slow down clock
+#
+# This was the old way.
+# avrdude -c usbtiny -p attiny26 -P /dev/ttyUSB0 -v -U hfuse:r:-:h -U lfuse:r:-:h
+# avrdude -c usbtiny -p attiny26 -P /dev/ttyUSB0 -v -U hfuse:w:0x14:m
+# avrdude -c usbtiny -p attiny26 -P /dev/ttyUSB0 -v -U lfuse:w:0xff:m
+#
+# avrdude -p m128 -u -U flash:w:diag.hex -U eeprom:w:eeprom.hex -U efuse:w:0xff:m -U hfuse:w:0x89:m -U lfuse:w:0x2e:m
 #
 #####
 ##### It supports C, C++ and Assembly source files.
@@ -49,6 +55,9 @@
 ##### make writeflash
 ##### make gdbinit
 ##### or make clean
+#####
+##### See the http://electrons.psychogenic.com/
+##### website for detailed instructions
 
 
 ####################################################
@@ -75,7 +84,7 @@
 # Name of target controller
 # (e.g. 'at90s8515', see the available avr-gcc mmcu
 # options for possible values)
-MCU=attiny261
+MCU=attiny861
 
 # id to use with programmer
 # default: PROGRAMMER_MCU=$(MCU)
@@ -125,7 +134,6 @@ OPTLEVEL=s
 #
 #AVRDUDE_PROGRAMMERID=usbtiny
 AVRDUDE_PROGRAMMERID=usbasp
-#AVRDUDE_PROGRAMMERID=usbasp-clone
 #AVRDUDE_PROGRAMMERID=buspirate
 
 # port--serial or parallel port to which your
@@ -233,11 +241,13 @@ all: $(TRG)
 
 fuses:
 	$(AVRDUDE) -c $(AVRDUDE_PROGRAMMERID)  \
+	 -B 12 \
 	 -p $(PROGRAMMER_MCU) -v  \
-     -U hfuse:w:0xdc:m -U lfuse:w:0xff:m -U efuse:w:0xff:m
+     -U hfuse:w:0xdf:m -U lfuse:w:0xed:m
 	$(AVRDUDE) -c $(AVRDUDE_PROGRAMMERID)  \
+	 -B 12 \
 	 -p $(PROGRAMMER_MCU) -v  \
-   -U hfuse:r:-:h -U lfuse:r:-:h -U efuse:r:-:h
+   -U hfuse:r:-:h -U lfuse:r:-:h
 
 
 disasm: $(DUMPTRG) stats
@@ -251,6 +261,7 @@ hex: $(HEXTRG)
 
 writeflash: hex
 	$(AVRDUDE) -c $(AVRDUDE_PROGRAMMERID)   \
+	 -B 12 \
 	 -p $(PROGRAMMER_MCU) -e        \
 	 -U flash:w:$(HEXROMTRG)
 
