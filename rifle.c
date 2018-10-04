@@ -2,15 +2,11 @@
   Rifle - antenna rotator interface for YAESU G-1000DXC series rotator
 
   -----------------------------------------------------------------------------
-  2012/7/11 - 2013/10/28 - 2014/1/24 - 2014/4/7
-
 
 Basically all work is build around the timer wich is 4 times the baudrate and
-implements a software uart. The target is ATTINY 26.
+implements a software uart. The target is ATTINY861.
 
 In normal mode the Led is blinking Duty Cyle 10%.
-
-We can control 2 yaesu rotators A and B.
 
 Serial connection is 9600 8n1
 
@@ -19,26 +15,7 @@ the movement is stopped.
 
 The watchdog is active via the main loop.
 
-Accept these commands coming from YAESU GS232:
-(command termination is 0x0d)
-B - get only elevation +0eee
-C - get only azimut +0aaa
-C2 - get readings in form +0aaa+0eee
-S - stop motion & tuning mode & debug output (space)
-Maaa - set destination azimut W180
-Waaa eee - set destination and start  W200 060
-L - start rotating left
-R - start rotating right
-U - start moving up
-D - start moving down
-A - stop azimut rotation
-E - stop elevation moving
-
-(no command termination - direct reading)
-t - tuning mode on - continously send readings
-T - stop tuning mode
-r - reset via watchdog
-v - Version string
+Commands are inside the program.
 
 *****************************************************************************/
 // internal clock
@@ -47,30 +24,50 @@ v - Version string
 #define DEADTIME 120            // after DEADTIME seconds since start of movement the rotator is stopped
 
 #include <avr/io.h>
-// #include <util/delay.h>
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
 #include <avr/wdt.h>
 
-const char version[] PROGMEM = "Rifle V5.2 extended\n";
+const char version[] PROGMEM = "Rifle V5.3 full\n";
+const char help[] PROGMEM = "# Command list\n\
+## YAESU GS232\n\
+B - get only elevation +0eee\n\
+C - get only azimut +0aaa\n\
+C2 - get readings in form +0aaa+0eee\n\
+S - stop motion & tuning mode & debug output (space)\n\
+Maaa - set destination azimut to aaa\n\
+Waaa eee - set destination aaa azimut and eee elevation\n\
+L - start rotating left\n\
+R - start rotating right\n\
+U - start moving up\n\
+D - start moving down\n\
+A - stop azimut rotation\n\
+E - stop elevation moving\n\
+\n\
+(no command termination - direct reading)\n\
+t - tuning mode on - continously send readings like C2\n\
+T - stop tuning mode\n\
+r - reset via watchdog\n\
+v - Version string\n\
+h - Help - this command list\n";
 
-#define	UARTTX      PA7
-#define UARTRX      PA6
-#define LED         PA3
+#define	TX_PIN      PA7
+#define RX_PIN      PA6
+#define LED_PIN     PA3
 #define MOSL        PA1   // input for received fieldstrength
 
-#define LEFT_A      PB0   // rotator A - azimuth
-#define RIGHT_A     PB1
+#define LEFT_PIN    PB0   // rotator A - azimuth
+#define RIGHT_PIN   PB1
 #define SPEEDCTRL_A PB3
 #define BEAR_A      PA0   // input for rotator A bearing
 
-#define LEFT_B      PA4   // rotator B - elevation 0-90
-#define RIGHT_B     PA5
+#define DOWN_PIN    PA4   // rotator B - elevation 0-90
+#define UP_PIN      PA5
 #define SPEEDCTRL_B PB6
 #define BEAR_B      PA2
 
-#define ADC_MUX_BEAR_A  0   // read bearing from port PA0
-#define ADC_MUX_BEAR_B  2   // read bearing from port PA2
+#define ADC_AZIMUTH   0   // read bearing from port PA0
+#define ADC_ELEVATION 2   // read bearing from port PA2
 
 static volatile uint8_t   seconds;
 static volatile uint8_t   reset;
@@ -92,6 +89,7 @@ static volatile uint16_t  differ;
 #define job_tuning        16
 #define job_get_azimut    32
 #define job_get_elevation 64
+#define job_get_help      128
 
 // status codes
 #define moving_a    1
@@ -118,8 +116,12 @@ static unsigned char buffer[16]; // circular buffer for receiver
 #define rxbusy 1				// set if a byte is being received
 #define rxframe 2				// set if the stop byte isn't a one
 
-#define ABSDIFF(a, b) ((a) < (b)? ((b) - (a)): ((a) - (b)))
-
+#define STOP_AZIMUT PORTB &= ~(1<<RIGHT_PIN | 1<<LEFT_PIN);
+#define GO_RIGHT    STOP_AZIMUT; PORTB |= (1<<RIGHT_PIN);
+#define GO_LEFT     STOP_AZIMUT; PORTB |= (1<<LEFT_PIN);
+#define STOP_ELEVATION PORTA &= ~( 1<<UP_PIN | 1<<DOWN_PIN);
+#define GO_UP       STOP_ELEVATION; PORTA |= (1<<UP_PIN);
+#define GO_DOWN     STOP_ELEVATION; PORTA |= (1<<DOWN_PIN);
 
 ISR( TIMER0_OVF_vect) {
   // the interrupt signal
@@ -146,16 +148,16 @@ ISR( TIMER0_OVF_vect) {
       // is it the start bit?
       if( uart_txbit == 0) {
         // yes...
-        PORTA &= ~(1<<UARTTX);		// clear the start bit output
+        PORTA &= ~(1<<TX_PIN);		// clear the start bit output
         uart_txbit++;
       }
       else {
         if( uart_txbit != 9) {
           // deal with the data bits
           if( uart_txd & 1)		// low bit set?
-            PORTA |= (1<<UARTTX);	// then set the data stream bit
+            PORTA |= (1<<TX_PIN);	// then set the data stream bit
           else
-            PORTA &= ~(1<<UARTTX);  // or clear, as required
+            PORTA &= ~(1<<TX_PIN);  // or clear, as required
           uart_txbit++;				// increment the bit count
 
           // and shift the data right
@@ -163,7 +165,7 @@ ISR( TIMER0_OVF_vect) {
         }
         else {
           // deal with the stop bit
-          PORTA |= (1<<UARTTX);
+          PORTA |= (1<<TX_PIN);
           uart_txbit++;
         }
       }
@@ -186,7 +188,7 @@ ISR( TIMER0_OVF_vect) {
   if( (uart_status & (1<<rxbusy)) == 0) {
     // we're idling
     // check to see if there's a start
-    if( (PINA & (1<<UARTRX)) == 0) {
+    if( (PINA & (1<<RX_PIN)) == 0) {
       // we found a start bit!
       // set the tick count to 2, so we get the sample near the middle of the bit
       uart_rxtick = 2;
@@ -212,7 +214,7 @@ ISR( TIMER0_OVF_vect) {
       if (uart_rxbit == 0) {
         // start bit
         // it had better be 0 or it was a line glitch
-        if ((PINA & (1<<UARTRX)) == 0) {
+        if ((PINA & (1<<RX_PIN)) == 0) {
           // it's a real start bit (probably) so deal with it
           // next bit will be data
           uart_rxbit ++;
@@ -230,7 +232,7 @@ ISR( TIMER0_OVF_vect) {
           uart_rxd >>= 1;
           // and set the higest bit
           // if the data bit is a one, set we add the bit value to the rxd value
-          if ((PINA & (1<<UARTRX)) != 0) {
+          if ((PINA & (1<<RX_PIN)) != 0) {
             uart_rxd |= (1<<7);
           }
           uart_rxbit ++;
@@ -255,6 +257,9 @@ ISR( TIMER0_OVF_vect) {
             job &= ~job_tuning;
             next_write = 0;
           }
+          else if( uart_rxd == 'h' ) {
+            job |= job_get_help;
+          }
           else if( uart_rxd == 'r' ) {
             // reset
             while( 1) {
@@ -271,14 +276,10 @@ ISR( TIMER0_OVF_vect) {
               if( target_a <= 450) {
                 // target is o.k. start moving //
                 if( target_a > bearing_a) {
-                  // right
-                  PORTB &= ~(1<<LEFT_A);
-                  PORTB |= (1<<RIGHT_A);
+                  GO_RIGHT;
                 }
                 else if( target_a < bearing_a) {
-                  // left
-                  PORTB &= ~(1<<RIGHT_A);
-                  PORTB |= (1<<LEFT_A);
+                  GO_LEFT;
                 }
                 seconds = 0;
                 rotator_status |= moving_a;
@@ -286,21 +287,16 @@ ISR( TIMER0_OVF_vect) {
               else {
                 // stop moving //
                 rotator_status &= ~moving_a;
-                PORTB &= ~(1<<RIGHT_A);
-                PORTB &= ~(1<<LEFT_A);
+                STOP_AZIMUT;
               }
               target_b = 100*(buffer[5] & 0x0f)+10*(buffer[6] & 0x0f)+(buffer[7] & 0x0f);
               if( target_b <= 150) {
                 // target is o.k. start moving //
                 if( target_b > bearing_b) {
-                  // right
-                  PORTA &= ~(1<<LEFT_B);
-                  PORTA |= (1<<RIGHT_B);
+                  GO_UP;
                 }
                 else if( target_b < bearing_b) {
-                  // left
-                  PORTA &= ~(1<<RIGHT_B);
-                  PORTA |= (1<<LEFT_B);
+                  GO_DOWN;
                 }
                 seconds = 0;
                 rotator_status |= moving_b;
@@ -308,8 +304,7 @@ ISR( TIMER0_OVF_vect) {
               else {
                 // stop moving //
                 rotator_status &= ~moving_b;
-                PORTA &= ~(1<<RIGHT_B);
-                PORTA &= ~(1<<LEFT_B);
+                STOP_ELEVATION;
               }
             }
             else if( next_write == 4 && buffer[0] == 'M') {
@@ -318,14 +313,10 @@ ISR( TIMER0_OVF_vect) {
               if( target_a <= 450) {
                 // target is o.k. start moving //
                 if( target_a > bearing_a) {
-                  // right
-                  PORTB &= ~(1<<LEFT_A);
-                  PORTB |= (1<<RIGHT_A);
+                  GO_RIGHT;
                 }
                 else if( target_a < bearing_a) {
-                  // left
-                  PORTB &= ~(1<<RIGHT_A);
-                  PORTB |= (1<<LEFT_A);
+                  GO_LEFT;
                 }
                 seconds = 0;
                 rotator_status |= moving_a;
@@ -333,18 +324,15 @@ ISR( TIMER0_OVF_vect) {
               else {
                 // stop moving //
                 rotator_status &= ~moving_a;
-                PORTB &= ~(1<<RIGHT_A);
-                PORTB &= ~(1<<LEFT_A);
+                STOP_AZIMUT;
               }
             }
           else if( next_write == 1 && buffer[0] == 'S') {
               // command S - stop all
               rotator_status = 0;
               job = 0;
-              PORTB &= ~(1<<LEFT_A);
-              PORTB &= ~(1<<RIGHT_A);
-              PORTA &= ~(1<<LEFT_B);
-              PORTA &= ~(1<<RIGHT_B);
+              STOP_ELEVATION;
+              STOP_AZIMUT;
             }
             else if( next_write == 2 && buffer[0] == 'C' && buffer[1] == '2') {
               job |= job_get_reading;
@@ -352,38 +340,33 @@ ISR( TIMER0_OVF_vect) {
             else if( next_write == 1 && buffer[0] == 'C') {
               job |= job_get_azimut;
             }
+            else if( next_write == 1 && buffer[0] == 'H' ) {
+              job |= job_get_help;
+            }
             else if( next_write == 1 && buffer[0] == 'B') {
               job |= job_get_elevation;
             }
             else if( next_write == 1 && buffer[0] == 'R') {
-              // right
-              PORTB &= ~(1<<LEFT_A);
-              PORTB |= (1<<RIGHT_A);
+              GO_RIGHT;
             }
             else if( next_write == 1 && buffer[0] == 'L') {
-              // left
-              PORTB &= ~(1<<RIGHT_A);
-              PORTB |= (1<<LEFT_A);
+              GO_LEFT;
             }
             else if( next_write == 1 && buffer[0] == 'U') {
-              // up
-              PORTA &= ~(1<<LEFT_A);
-              PORTA |= (1<<RIGHT_A);
+              GO_UP;
             }
             else if( next_write == 1 && buffer[0] == 'D') {
-              // down
-              PORTA &= ~(1<<RIGHT_B);
-              PORTA |= (1<<LEFT_B);
+              GO_DOWN;
             }
             else if( next_write == 1 && buffer[0] == 'A') {
-              // stop a
-              PORTB &= ~(1<<LEFT_A);
-              PORTB &= ~(1<<RIGHT_A);
+              STOP_AZIMUT;
             }
             else if( next_write == 1 && buffer[0] == 'E') {
-              // stop e
-              PORTA &= ~(1<<LEFT_B);
-              PORTA &= ~(1<<RIGHT_B);
+              STOP_ELEVATION;
+            }
+            else {
+              // write debug info
+              job |= job_getversion;
             }
             next_write = 0;
           }
@@ -411,7 +394,7 @@ ISR( TIMER0_OVF_vect) {
         // read bearing a - azimuth
         bearing_a = ADCW;
         bearing_a >>= 1;
-        ADMUX = ADC_MUX_BEAR_B;
+        ADMUX = ADC_ELEVATION;
       }
       else {
         // read bearing b - elevation
@@ -421,7 +404,7 @@ ISR( TIMER0_OVF_vect) {
           bearing_b -= 90; // offset because of "incorrect" mounting of unit
         else
           bearing_b = 0;
-        ADMUX = ADC_MUX_BEAR_A;
+        ADMUX = ADC_AZIMUTH;
       }
       ADCSRA |= (1<<ADSC);        // start AD conversion
     }
@@ -430,49 +413,45 @@ ISR( TIMER0_OVF_vect) {
     if( (fiftieths % 10 == 0) && rotator_status) {
       // we have arrived at the target bearing
       if( target_a == bearing_a ||
-          ((PORTB & (1<<LEFT_A)) && target_a > bearing_a) ||
-          ((PORTB & (1<<RIGHT_A)) && target_a < bearing_a)) {
+          ((PORTB & (1<<LEFT_PIN)) && target_a > bearing_a) ||
+          ((PORTB & (1<<RIGHT_PIN)) && target_a < bearing_a)) {
         rotator_status &= ~moving_a;
-        PORTB &= ~(1<<RIGHT_A);
-        PORTB &= ~(1<<LEFT_A);
+        STOP_AZIMUT;
       }
       if( target_b == bearing_b ||
-          ((PORTA & (1<<LEFT_B)) && target_b > bearing_b) ||
-          ((PORTA & (1<<RIGHT_B)) && target_b < bearing_b)) {
+          ((PORTA & (1<<DOWN_PIN)) && target_b > bearing_b) ||
+          ((PORTA & (1<<UP_PIN)) && target_b < bearing_b)) {
         rotator_status &= ~moving_b;
-        PORTA &= ~(1<<RIGHT_B);
-        PORTA &= ~(1<<LEFT_B);
+        STOP_ELEVATION;
       }
     }
 
     if( fiftieths == 5 || fiftieths == 15 || fiftieths == 30) {
       // turn led off
-      PORTA |= (1<<LED);
+      PORTA |= (1<<LED_PIN);
     }
 
     // when moving do additional blink
     if( fiftieths == 25 && rotator_status) {
       // turn led on
-      PORTA &= ~(1<<LED);
+      PORTA &= ~(1<<LED_PIN);
     }
 
-    // light LED after reset
+    // light LED_PIN after reset
     if( reset) {
-      PORTA &= ~(1<<LED);
+      PORTA &= ~(1<<LED_PIN);
     }
 
     if( fiftieths == 50) {
       // turn led on
-      PORTA &= ~(1<<LED);
+      PORTA &= ~(1<<LED_PIN);
       fiftieths = 0;
       ++seconds;
       // rotator death protection
       if( seconds == DEADTIME && rotator_status) {
-        PORTB &= ~(1<<LEFT_A);
-        PORTB &= ~(1<<RIGHT_A);
-        PORTA &= ~(1<<LEFT_B);
-        PORTA &= ~(1<<RIGHT_B);
         rotator_status = 0;
+        STOP_AZIMUT;
+        STOP_ELEVATION;
       }
       if( seconds == 255) { seconds = DEADTIME;}
       reset = 0;
@@ -516,9 +495,9 @@ void init( void) {
   ticks = 0;
   fiftieths = 0;
 
-  DDRB = 1<<LEFT_A | 1<<RIGHT_A | 1<<SPEEDCTRL_A | 1<<SPEEDCTRL_B;	  // define output pins
-  DDRA = 1<<LEFT_B | 1<<RIGHT_B | 1<<UARTTX | 1<<LED;                 // define output pins
-  PORTA |= 1<<UARTTX | 1<<LED;	                            	        // write 1 to output
+  DDRB = 1<<LEFT_PIN | 1<<RIGHT_PIN | 1<<SPEEDCTRL_A | 1<<SPEEDCTRL_B;	  // define output pins
+  DDRA = 1<<DOWN_PIN | 1<<UP_PIN | 1<<TX_PIN | 1<<LED_PIN;                    // define output pins
+  PORTA |= 1<<TX_PIN | 1<<LED_PIN;	                            	        // write 1 to output
   PORTB |= 1<<SPEEDCTRL_A | 1<<SPEEDCTRL_B;               		        // write 1 to output
 
   TCCR0B = 0x01;               // set prescaler for timer0 to 1
@@ -539,7 +518,7 @@ void init( void) {
   // Configure ADC
   ADCSRA = 0b00000110;         // Prescaler = 64 >> clk=125kHz,  Single conversion
 
-  ADMUX = ADC_MUX_BEAR_A;     
+  ADMUX = ADC_AZIMUTH;
   ADCSRB = 0;                  // use Vcc as referenc and select input
 
   ADCSRA |= (1<<ADEN);         // enable the ADC
@@ -560,15 +539,22 @@ int main(void) {
   wdt_disable();
 
   init();
-  while( seconds < 1) {};  // wait for 1 second
+  while( fiftieths < 10) {};  // wait for 1/5 second
 
-  wdt_enable(WDTO_500MS);     // the watchdog is running
+  wdt_enable( WDTO_1S);     // the watchdog is running
 
   job = job_getversion;
   while(1) {
     if( job & job_getversion) {
       job &= ~job_getversion;
       addr = version;
+      while(( c = pgm_read_byte( addr++)) != '\0' ) {
+        put_char( c);
+      }
+    }
+    if( job & job_get_help) {
+      job &= ~job_get_help;
+      addr = help;
       while(( c = pgm_read_byte( addr++)) != '\0' ) {
         put_char( c);
       }
