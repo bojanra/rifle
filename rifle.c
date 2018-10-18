@@ -28,7 +28,7 @@ Commands are inside the program.
 #include <avr/pgmspace.h>
 #include <avr/wdt.h>
 
-const char version[] PROGMEM = "Rifle V5.3 full\n";
+const char version[] PROGMEM = "Rifle V5.3A full\n";
 const char help[] PROGMEM = "# Command list\n\
 ## YAESU GS232\n\
 B - get only elevation +0eee\n\
@@ -400,10 +400,6 @@ ISR( TIMER0_OVF_vect) {
         // read bearing b - elevation
         bearing_b = ADCW;
         bearing_b >>= 2;   // and divide by 2
-        if( bearing_b >= 90)
-          bearing_b -= 90; // offset because of "incorrect" mounting of unit
-        else
-          bearing_b = 0;
         ADMUX = ADC_AZIMUTH;
       }
       ADCSRA |= (1<<ADSC);        // start AD conversion
