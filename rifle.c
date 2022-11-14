@@ -28,7 +28,7 @@ Commands are inside the program.
 #include <avr/pgmspace.h>
 #include <avr/wdt.h>
 
-const char version[] PROGMEM = "Rifle V5.3 double AZ\n";
+const char version[] PROGMEM = "Rifle V5.4 double AZ\n";
 const char help[] PROGMEM = "# Command list\n\
 ## YAESU GS232\n\
 B - get only elevation +0eee\n\
@@ -36,13 +36,14 @@ C - get only azimut +0aaa\n\
 C2 - get readings in form +0aaa+0eee\n\
 S - stop motion & tuning mode & debug output (space)\n\
 Maaa - set destination azimut to aaa\n\
+Keee - set destination elevation to eee\n\
 Waaa eee - set destination aaa azimut and eee elevation\n\
 L - start rotating left\n\
 R - start rotating right\n\
 U - start moving up\n\
 D - start moving down\n\
-A - stop azimut rotation\n\
-E - stop elevation moving\n\
+A - stop azimut motion\n\
+E - stop elevation motion\n\
 \n\
 (no command termination - direct reading)\n\
 t - tuning mode on - continously send readings like C2\n\
@@ -269,10 +270,22 @@ ISR( TIMER0_OVF_vect) {
             job |= job_tuning;
             next_write = 0;
           }
+          else if( uart_rxd == ' ' ) {
+            // stop all
+            rotator_status = 0;
+            job = 0;
+            STOP_ELEVATION;
+            STOP_AZIMUT;
+            next_write = 0;
+          }
           else if( uart_rxd == 13) {
             if( next_write == 8 && buffer[0] == 'W' && buffer[4] == ' ') {
               // command W
               target_a = 100*(buffer[1] & 0x0f)+10*(buffer[2] & 0x0f)+(buffer[3] & 0x0f);
+              // shortcut !!
+              if( bearing_a > 270 && target_a < 90) {
+                target_a += 360;
+              }
               if( target_a <= 450) {
                 // target is o.k. start moving //
                 if( target_a > bearing_a) {
@@ -290,7 +303,11 @@ ISR( TIMER0_OVF_vect) {
                 STOP_AZIMUT;
               }
               target_b = 100*(buffer[5] & 0x0f)+10*(buffer[6] & 0x0f)+(buffer[7] & 0x0f);
-              if( target_b <= 150) {
+              // shortcut !!
+              if( bearing_b > 270 && target_b < 90) {
+                target_b += 360;
+              }
+              if( target_b <= 450) {
                 // target is o.k. start moving //
                 if( target_b > bearing_b) {
                   GO_UP;
@@ -310,6 +327,10 @@ ISR( TIMER0_OVF_vect) {
             else if( next_write == 4 && buffer[0] == 'M') {
               // command M
               target_a = 100*(buffer[1] & 0x0f)+10*(buffer[2] & 0x0f)+(buffer[3] & 0x0f);
+              // shortcut !!
+              if( bearing_a > 270 && target_a < 90) {
+                target_a += 360;
+              }
               if( target_a <= 450) {
                 // target is o.k. start moving //
                 if( target_a > bearing_a) {
@@ -325,6 +346,30 @@ ISR( TIMER0_OVF_vect) {
                 // stop moving //
                 rotator_status &= ~moving_a;
                 STOP_AZIMUT;
+              }
+            }
+            else if( next_write == 4 && buffer[0] == 'K') {
+              // command K
+              target_b = 100*(buffer[1] & 0x0f)+10*(buffer[2] & 0x0f)+(buffer[3] & 0x0f);
+              // shortcut !!
+              if( bearing_b > 270 && target_b < 90) {
+                target_b += 360;
+              }
+              if( target_b <= 450) {
+                // target is o.k. start moving //
+                if( target_b > bearing_b) {
+                  GO_UP;
+                }
+                else if( target_b < bearing_b) {
+                  GO_DOWN;
+                }
+                seconds = 0;
+                rotator_status |= moving_b;
+              }
+              else {
+                // stop moving //
+                rotator_status &= ~moving_b;
+                STOP_ELEVATION;
               }
             }
           else if( next_write == 1 && buffer[0] == 'S') {
@@ -359,9 +404,13 @@ ISR( TIMER0_OVF_vect) {
               GO_DOWN;
             }
             else if( next_write == 1 && buffer[0] == 'A') {
+              rotator_status = 0;
+              job = 0;
               STOP_AZIMUT;
             }
             else if( next_write == 1 && buffer[0] == 'E') {
+              rotator_status = 0;
+              job = 0;
               STOP_ELEVATION;
             }
             else {
