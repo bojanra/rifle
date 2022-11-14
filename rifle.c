@@ -109,12 +109,13 @@ static unsigned char buffer[16]; // circular buffer for receiver
 
 #define ABSDIFF(a, b) ((a) < (b)? ((b) - (a)): ((a) - (b)))
 
-ISR( TIMER0_OVF0_vect) {
+
+ISR( TIMER0_OVF_vect) {
   // the interrupt signal
 
   // we arrive here four times per baud rate
   // preset the timer0
-  TCNT0 = TIMER0PRESET;				// preset for timer
+  TCNT0L = TIMER0PRESET;				// preset for timer
 
   // we first send the output signal, if there's anything to send,
   // since it needs to be somewhere close to accurate...
@@ -336,7 +337,7 @@ ISR( TIMER0_OVF0_vect) {
     fiftieths++;
 
     // ADC stuff
-    if( (ADCSR & (1<<ADSC)) == 0) {
+    if( (ADCSRA & (1<<ADSC)) == 0) {
       if( ADMUX == 0) {
         // read bearing a - azimuth
         bearing_a = ADCW;
@@ -353,7 +354,7 @@ ISR( TIMER0_OVF0_vect) {
           bearing_b = 0;
         ADMUX = ADC_MUX_BEAR_A;
       }
-      ADCSR |= (1<<ADSC);        // start AD conversion
+      ADCSRA |= (1<<ADSC);        // start AD conversion
     }
 
     // movement control - do not overshoot - only check if moving
@@ -451,8 +452,8 @@ void init( void) {
   PORTA |= 1<<UARTTX | 1<<LED;	                            	        // write 1 to output
   PORTB |= 1<<SPEEDCTRL_A | 1<<SPEEDCTRL_B;               		        // write 1 to output
 
-  TCCR0 = 0x01;               // set prescaler for timer0 to 1
-  TCNT0 = TIMER0PRESET;				// preset for timer
+  TCCR0B = 0x01;               // set prescaler for timer0 to 1
+  TCNT0L = TIMER0PRESET;				// preset for timer
 
   TIMSK = (1<<TOIE0); 		    // allow interrupts on timer0 overflow
 
@@ -467,16 +468,14 @@ void init( void) {
   rotator_status = 0;     // the rotator is not moving
 
   // Configure ADC
-  //ADCSRA = 0b00100011;        // Prescaler = 8 >> clk=150kHz,  Enable auto trigger
-  ADCSR = 0b00000110;         // Prescaler = 64 >> clk=125kHz,  Single conversion
+  ADCSRA = 0b00000110;         // Prescaler = 64 >> clk=125kHz,  Single conversion
 
-  ADMUX = ADC_MUX_BEAR_A;     // use Vcc as referenc and select input
+  ADMUX = ADC_MUX_BEAR_A;     
+  ADCSRB = 0;                  // use Vcc as referenc and select input
 
-  ADCSR |= (1<<ADEN);         // enable the ADC
-  ADCSR |= (1<<ADSC);         // start AD conversion
+  ADCSRA |= (1<<ADEN);         // enable the ADC
 
-  // uint16_t result;
-  // result = ADCW;
+  ADCSRA |= (1<<ADSC);         // start AD conversion
 
   seconds = 0;                // just count seconds
   reset = 1;                  // show recovering from reset
@@ -488,6 +487,8 @@ void init( void) {
 int main(void) {
   const char* addr;
   char c;
+  MCUSR = 0;
+  wdt_disable();
 
   init();
   while( seconds < 1) {};  // wait for 1 second

@@ -8,7 +8,7 @@
 # /etc/udev/rules.d/80-usbprog.rules
 # ATTR{idVendor}=="1781", ATTR{idProduct}=="0c9f", GROUP="plugdev", MODE="0660" # adafruit usbtiny
 # ATTR{idVendor}=="03eb", ATTR{idProduct}=="c8b4", GROUP="plugdev", MODE="0660" # Alibaba programer
-#
+# 
 # and the correct entries in
 # /etc/avrdude
 # containing:#
@@ -31,6 +31,7 @@
 # avrdude -c usbasp -p attiny261 -v -U hfuse:r:-:h -U lfuse:r:-:h -U efuse:r:-:h
 # Write fuse:
 # avrdude -c usbtiny -p attiny261 -v -U lfuse:w:0xff:m -U hfuse:w:0xdc:m -U efuse:w:0xff:m
+# avrdude -c usbtiny -p attiny461 -v -U lfuse:w:0xff:m -U hfuse:w:0xdc:m -U efuse:w:0xff:m
 #
 # Program all:
 # avrdude -p m128 -u -U flash:w:diag.hex -U eeprom:w:eeprom.hex -U efuse:w:0xff:m -U hfuse:w:0x89:m -U lfuse:w:0x2e:m
@@ -75,7 +76,7 @@
 # Name of target controller
 # (e.g. 'at90s8515', see the available avr-gcc mmcu
 # options for possible values)
-MCU=attiny261
+MCU=attiny461
 
 # id to use with programmer
 # default: PROGRAMMER_MCU=$(MCU)
@@ -234,10 +235,10 @@ all: $(TRG)
 fuses:
 	$(AVRDUDE) -c $(AVRDUDE_PROGRAMMERID)  \
 	 -p $(PROGRAMMER_MCU) -v  \
-     -U hfuse:w:0xdc:m -U lfuse:w:0xff:m -U efuse:w:0xff:m
+     -U hfuse:w:0x14:m -U lfuse:w:0xff:m
 	$(AVRDUDE) -c $(AVRDUDE_PROGRAMMERID)  \
 	 -p $(PROGRAMMER_MCU) -v  \
-   -U hfuse:r:-:h -U lfuse:r:-:h -U efuse:r:-:h
+   -U hfuse:r:-:h -U lfuse:r:-:h
 
 
 disasm: $(DUMPTRG) stats
